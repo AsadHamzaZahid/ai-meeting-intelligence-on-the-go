@@ -11,10 +11,8 @@ from pathlib import Path
 import streamlit as st
 import streamlit.components.v1 as components
 
-import shutil
-import yt_dlp
-st.caption(
-    f"yt-dlp {yt_dlp.version.__version__} | deno: {shutil.which('deno')}")
+import json
+
 
 # 1. Inject project root cleanly into system paths
 project_root = str(Path(__file__).resolve().parent)
@@ -32,6 +30,18 @@ from core.rag_engine import ask_question  # noqa: E402
 
 BASE = Path(__file__).parent
 MAX_UPLOAD_MB = 60
+
+SAMPLES_DIR = BASE / "samples"
+YT_BLOCK = ("sign in to confirm", "not a bot", "http error 429", "http error 403",
+            "ip address is blocked", "ipblocked", "requestblocked", "po token")
+
+
+def load_samples() -> dict:
+    try:
+        return json.loads((SAMPLES_DIR / "samples.json").read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
 
 st.set_page_config(page_title="AI Meeting Intelligence", page_icon="🎬", layout="wide",
                    initial_sidebar_state="collapsed")
@@ -128,19 +138,33 @@ def run_job(S: dict, job_id: str, source: str, language: str, tmp):
         S["jobs"][job_id] = {"status": "done",
                              "result": to_payload(r, job_id), "t": time.time()}
     except Exception as e:
-        print(f"Job {job_id} failed: {safe_error(e)}")
-        S["jobs"][job_id] = {
-            "status": "error", "error": "Pipeline failed: " + safe_error(e), "t": time.time()}
-    finally:
-        if tmp and os.path.exists(tmp):
-            os.remove(tmp)
+        msg = safe_error(e)
+        print(f"Job {job_id} failed: {msg}")
+        blocked = source.startswith(
+            ("http://", "https://")) and any(k in msg.lower() for k in YT_BLOCK)
+        S["jobs"][job_id] = {"status": "error", "code": "yt_blocked" if blocked else "",
+                             "error": "Pipeline failed: " + msg, "t": time.time()}
 
 
 def handle(a: dict) -> dict:
     S, act = store(), a.get("action")
 
+    # --- 1. Samples Action ---
+    if act == "samples":
+        return {
+            "ok": True,
+            "samples": [
+                {"file": f, "title": t}
+                for f, t in load_samples().items()
+                if (SAMPLES_DIR / f).is_file()
+            ]
+        }
+
+    # --- 2. Analyse Action ---
     if act == "analyse":
         language, tmp = a.get("language") or "english", None
+
+        # 1. Data Branch
         if a.get("data"):
             raw = base64.b64decode(a["data"].split(",", 1)[-1])
             if len(raw) > MAX_UPLOAD_MB * 1048576:
@@ -150,25 +174,48 @@ def handle(a: dict) -> dict:
                 f.write(raw)
                 tmp = f.name
             source = tmp
+
+        # 2. Sample Branch
+        elif a.get("sample"):
+            name = a["sample"]
+            if name not in load_samples() or not (SAMPLES_DIR / name).is_file():
+                return {"ok": False, "error": "Unknown sample."}
+            source = str(SAMPLES_DIR / name)
+
+        # 3. URL Branch
         elif (a.get("url") or "").strip():
             source = a["url"].strip()
+
+        # 4. Error Fallback
         else:
             return {"ok": False, "error": "Provide a url or a file"}
+
+        # --- Processing Logic (Executes ONLY if inside 'analyse' and valid) ---
+        # Clean up old jobs (older than 1 hour)
         for k in [k for k, v in S["jobs"].items() if time.time() - v.get("t", 0) > 3600]:
             S["jobs"].pop(k, None)
             S["chains"].pop(k, None)
+
+        # Initialize and fire background thread
         job_id = uuid.uuid4().hex
         S["jobs"][job_id] = {"status": "running", "t": time.time()}
-        threading.Thread(target=run_job, args=(
-            S, job_id, source, language, tmp), daemon=True).start()
+
+        threading.Thread(
+            target=run_job,
+            args=(S, job_id, source, language, tmp),
+            daemon=True
+        ).start()
+
         return {"ok": True, "job_id": job_id}
 
+    # --- 3. Poll Action ---
     if act == "poll":
         job = S["jobs"].get(a.get("job_id"))
         if not job:
             return {"ok": True, "status": "missing"}
         return {"ok": True, **{k: v for k, v in job.items() if k != "t"}}
 
+    # --- 4. Chat Action ---
     if act == "chat":
         chain = S["chains"].get(a.get("session_id"))
         if chain is None:
@@ -178,6 +225,7 @@ def handle(a: dict) -> dict:
         except Exception as e:
             return {"ok": False, "error": safe_error(e)}
 
+    # --- 5. Catch-all Fallback ---
     return {"ok": False, "error": "Unknown action"}
 
 

@@ -3095,9 +3095,11 @@ Achieving elite success relies on establishing an uncompromising personal standa
         $('#file').onchange = e => { $('#fn').textContent = e.target.files[0]?.name || '' };
         $('#form').onsubmit = async e => {
             e.preventDefault(); const err = $('#err'); err.textContent = '';
-            if (!DEMO && !$('#url').value.trim() && !$('#file').files[0]) { err.textContent = 'Paste a link or choose a file to get past the line.'; return }
+            if (!DEMO && !$('#url').value.trim() && !$('#file').files[0] && !window.PICKED) { err.textContent = 'Paste a link or choose a file to get past the line.'; return }
+
             mark('loading'); const t0 = Date.now(); let data;
-            try { data = await callApi() } catch (x) { unmark('loading'); err.textContent = x.message === 'Failed to fetch' ? 'Cannot reach the server. Try again.' : x.message; return }
+            try { data = await callApi() } catch (x) { unmark('loading'); err.textContent = x.message === 'Failed to fetch' ? 'Cannot reach the server. Try again.' : x.message; if (x.code === 'yt_blocked') window.onYtBlocked && window.onYtBlocked(); return }
+
             await sleep(Math.max(0, 7000 - (Date.now() - t0)));
             await escape(data);
         };

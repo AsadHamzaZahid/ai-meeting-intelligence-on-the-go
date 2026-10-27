@@ -31,9 +31,11 @@
   const b64 = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(new Error('Could not read the file.')); r.readAsDataURL(f) });
 
   callApi = async function () {
-    const f = $('#file').files[0], payload = { action: 'analyse', language: $('#lang').value };
-    if (f) {
-      if (f.size > MAX_MB * 1048576) throw new Error('That file is over ' + MAX_MB + ' MB. Please use a YouTube link or a shorter clip.');
+    const f = $('#file').files[0], pick = window.PICKED; window.PICKED = null;
+    const payload = { action: 'analyse', language: $('#lang').value };
+    if (pick) payload.sample = pick;
+    else if (f) {
+      if (f.size > MAX_MB * 1048576) throw new Error('That file is over ' + MAX_MB + ' MB. Please use a shorter clip.');
       payload.filename = f.name; payload.data = await b64(f);
     } else payload.url = $('#url').value.trim();
     const r = await call(payload);
@@ -43,7 +45,10 @@
       await sleep(3000);
       const s = await call({ action: 'poll', job_id });
       if (s.status === 'done') { const res = s.result; res._job = job_id; return res }
-      if (s.status === 'error') throw new Error(s.error || 'The analysis failed.');
+      if (s.status === 'error') {
+        const e = new Error(s.code === 'yt_blocked' ? 'YouTube blocks cloud servers. Pick a sample or upload a file.' : (s.error || 'The analysis failed.'));
+        e.code = s.code; throw e;
+      }
       if (s.status === 'missing') throw new Error('Lost track of the job. Please try again.');
     }
   };
@@ -60,4 +65,28 @@
       show(r.answer);
     } catch (e) { show(localAnswer(v, DATA)) }
   };
+  /* ---- sample panel (left side, shown with the upload box) ---- */
+  const st = document.createElement('style');
+  st.textContent = `#smp{position:fixed;left:12px;top:42%;z-index:62;display:none}
+  body.gated #smp{display:block} body.loading #smp,body.black #smp,body.is-day #smp{display:none}
+  #smpb{background:#ffd24a;color:#111;border:0;border-radius:10px;padding:10px 14px;font:700 14px Inter,sans-serif;cursor:pointer;box-shadow:0 4px 14px #000a}
+  #smpl{display:none;margin-top:8px;width:min(280px,70vw);max-height:50vh;overflow:auto;background:#0a0f1eee;border:1px solid #ffffff30;border-radius:12px;padding:6px}
+  #smpl.on{display:block}
+  #smpl button{display:block;width:100%;text-align:left;background:none;border:0;color:#eef2ff;padding:9px 10px;border-radius:8px;font:500 14px Inter,sans-serif;cursor:pointer}
+  #smpl button:hover{background:#ffffff1a}`;
+  document.head.append(st);
+  const box = document.createElement('div'); box.id = 'smp';
+  box.innerHTML = '<button id="smpb" type="button">🎬 Samples</button><div id="smpl"></div>';
+  document.body.append(box);
+  $('#smpb').onclick = () => $('#smpl').classList.toggle('on');
+  call({ action: 'samples' }).then(r => {
+    (r.samples || []).forEach(s => {
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = s.title;
+      b.onclick = () => {
+        window.PICKED = s.file; $('#url').value = ''; $('#file').value = ''; $('#fn').textContent = '';
+        $('#smpl').classList.remove('on'); $('#form').requestSubmit();
+      };
+      $('#smpl').append(b);
+    });
+  }).catch(() => { });
 })();
