@@ -11,6 +11,11 @@ from pathlib import Path
 import streamlit as st
 import streamlit.components.v1 as components
 
+import shutil
+import yt_dlp
+st.caption(
+    f"yt-dlp {yt_dlp.version.__version__} | deno: {shutil.which('deno')}")
+
 # 1. Inject project root cleanly into system paths
 project_root = str(Path(__file__).resolve().parent)
 if project_root not in sys.path:
