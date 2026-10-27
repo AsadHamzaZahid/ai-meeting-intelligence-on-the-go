@@ -6,6 +6,7 @@ import tempfile
 import threading
 import time
 import uuid
+import inspect
 from pathlib import Path
 
 import streamlit as st
@@ -130,10 +131,27 @@ def to_payload(r: dict, job_id: str) -> dict:
     }
 
 
+STAGES = ["audio", "transcribe", "title", "summary", "extract", "rag"]
+
+
+def make_progress(S, job_id):
+    def progress(stage):
+        job = S["jobs"].get(job_id)
+        if job and job.get("status") == "running" and stage in STAGES:
+            job["stage"] = stage
+            job["done_stages"] = STAGES[:STAGES.index(stage)]
+    return progress
+
+
 def run_job(S: dict, job_id: str, source: str, language: str, tmp):
-    """Runs in a background thread, so the page keeps playing while Python works."""
     try:
-        r = run_pipeline(source, language)
+        kwargs = {}
+        try:
+            if "progress" in inspect.signature(run_pipeline).parameters:
+                kwargs["progress"] = make_progress(S, job_id)
+        except (TypeError, ValueError):
+            pass
+        r = run_pipeline(source, language, **kwargs)
         S["chains"][job_id] = r.get("rag_chain")
         S["jobs"][job_id] = {"status": "done",
                              "result": to_payload(r, job_id), "t": time.time()}
@@ -144,6 +162,9 @@ def run_job(S: dict, job_id: str, source: str, language: str, tmp):
             ("http://", "https://")) and any(k in msg.lower() for k in YT_BLOCK)
         S["jobs"][job_id] = {"status": "error", "code": "yt_blocked" if blocked else "",
                              "error": "Pipeline failed: " + msg, "t": time.time()}
+    finally:
+        if tmp and os.path.exists(tmp):
+            os.remove(tmp)
 
 
 def handle(a: dict) -> dict:
@@ -197,6 +218,8 @@ def handle(a: dict) -> dict:
             S["chains"].pop(k, None)
 
         # Initialize and fire background thread
+        if sum(1 for v in S["jobs"].values() if v.get("status") == "running") >= 3:
+            return {"ok": False, "error": "The app is busy right now. Try again in a minute."}
         job_id = uuid.uuid4().hex
         S["jobs"][job_id] = {"status": "running", "t": time.time()}
 

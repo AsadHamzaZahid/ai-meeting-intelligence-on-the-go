@@ -17,23 +17,32 @@ from dotenv import load_dotenv  # noqa: E402
 load_dotenv()
 
 
-def run_pipeline(source: str, language: str = "english") -> dict:
+def run_pipeline(source: str, language: str = "english", progress=None) -> dict:
+    # progress is optional: the web app passes a function that updates the status lights.
+    # When running from the terminal it is None, so nothing changes.
+    progress = progress or (lambda stage: None)
+
     print("starting AI Video Assistant")
 
+    progress("audio")
     chunks = process_input(source)
 
+    progress("transcribe")
     transcript = transcribe_all(chunks, language)
     print(f"raw transcription (first 300 characters ) {transcript[:300]}")
 
+    progress("title")
     title = generate_title(transcript)
 
+    progress("summary")
     summary = summarize(transcript)
 
+    progress("extract")
     action_item = extract_action_items(transcript)
-
     decisions = extract_key_decisions(transcript)
     questions = extract_questions(transcript)
 
+    progress("rag")
     rag_chain = build_rag_chain(transcript)
 
     return {
