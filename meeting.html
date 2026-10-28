@@ -2405,6 +2405,110 @@
         .card .core b {
             color: #e8501a
         }
+
+        #skip {
+            position: fixed;
+            top: 14px;
+            right: 58px;
+            z-index: 61;
+            display: none;
+            height: 28px;
+            padding: 0 10px;
+            border-radius: 14px;
+            border: 1px solid #ffffff55;
+            background: #0008;
+            color: #fff;
+            font: 600 11px Inter, sans-serif;
+            cursor: pointer;
+            opacity: .75
+        }
+
+        #skip:hover {
+            opacity: 1
+        }
+
+        body.loading #skip {
+            display: block
+        }
+
+        #skip.nudge {
+            opacity: 1;
+            border-color: #ffd24a;
+            color: #ffd24a;
+            animation: skg 1s ease-in-out infinite
+        }
+
+        #skip.nudge2 {
+            animation-duration: .5s;
+            background: #ffd24a;
+            color: #111
+        }
+
+        @keyframes skg {
+            50% {
+                box-shadow: 0 0 0 5px #ffd24a55, 0 0 16px 6px #ffd24a
+            }
+        }
+
+        #chb {
+            position: fixed;
+            left: 50%;
+            bottom: 6%;
+            transform: translateX(-50%);
+            z-index: 65;
+            display: none;
+            width: min(440px, calc(100vw - 24px));
+            text-align: center;
+            background: #0a0f1ef2;
+            border: 2px solid #3ecf8e;
+            border-radius: 14px;
+            padding: 14px 16px;
+            color: #fff;
+            font: 600 15px/1.4 Inter, sans-serif;
+            box-shadow: 0 10px 40px #000a
+        }
+
+        #chb.on {
+            display: block
+        }
+
+        #chb div {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px
+        }
+
+        #chb button {
+            flex: 1;
+            height: 42px;
+            border: 0;
+            border-radius: 10px;
+            font: 600 15px Inter, sans-serif;
+            cursor: pointer
+        }
+
+        #chb .k {
+            background: #3ecf8e;
+            color: #06210f
+        }
+
+        #chb .e {
+            background: #ff2a3d;
+            color: #fff
+        }
+
+        .ready #msg {
+            display: none !important
+        }
+
+        .black #skip,
+        .is-day #skip,
+        .escaping #skip,
+        .black #chb,
+        .is-day #chb,
+        .escaping #chb {
+            display: none !important
+        }
     </style>
 </head>
 
@@ -2412,6 +2516,12 @@
     <button id="mute" aria-label="Toggle sound" title="Click anywhere to turn the sound on">🔇</button>
     <div id="gate"><button id="begin">Press Enter to begin</button></div>
     <div id="count"></div>
+
+    <button id="skip" type="button">Skip ⏭</button>
+    <div id="chb" role="dialog" aria-live="polite">✅ File is done.<br>Keep playing the story, or escape now?
+        <div><button class="k" id="keep" type="button">Keep playing</button><button class="e" id="escnow"
+                type="button">Escape now</button></div>
+    </div>
 
     <div id="world">
         <div id="night">
@@ -3098,9 +3208,12 @@ Achieving elite success relies on establishing an uncompromising personal standa
             if (!DEMO && !$('#url').value.trim() && !$('#file').files[0] && !window.PICKED) { err.textContent = 'Paste a link or choose a file to get past the line.'; return }
 
             mark('loading'); const t0 = Date.now(); let data;
+            skipReq = false; { const sk = $('#skip'); sk.textContent = 'Skip ⏭'; sk.disabled = false; sk.className = ''; sk.onclick = () => { skipReq = true; sk.textContent = 'Escaping when ready…'; sk.disabled = true } }
+            window.PWUSES = 0;
             try { data = await callApi() } catch (x) { unmark('loading'); err.textContent = x.message === 'Failed to fetch' ? 'Cannot reach the server. Try again.' : x.message; if (x.code === 'yt_blocked') window.onYtBlocked && window.onYtBlocked(); return }
 
             await sleep(Math.max(0, 7000 - (Date.now() - t0)));
+            await decide();
             await escape(data);
         };
         async function callApi() {
@@ -3120,8 +3233,27 @@ Achieving elite success relies on establishing an uncompromising personal standa
             }
         }
 
+        let skipReq = false;
+        function decide() {
+            return new Promise(res => {
+                if (skipReq) return res();
+                const sk = $('#skip'), go = () => res();
+                mark('ready'); sk.disabled = false; sk.textContent = 'Escape ⏭'; sk.onclick = go;
+                $('#chb').classList.add('on');
+                $('#escnow').onclick = go;
+                $('#keep').onclick = () => $('#chb').classList.remove('on');
+            });
+        }
+        window.onPower = n => {
+            const sk = $('#skip');
+            if (n >= 3) sk.classList.add('nudge');
+            if (n >= 4) sk.classList.add('nudge2');
+            if (n === 4) { try { const h = BATTLE.all.filter(x => !x.classList.contains('dead')); bark(h[1] || h[0], "That's enough, let's get out of here!", { p: 1.1, r: 1.2 }) } catch (e) { } }
+        };
+
         /* ---- 3. shock, blackout, helicopter, daylight ---- */
         async function escape(data) {
+            mark('escaping'); unmark('ready');
             await nemesisDown();
             $('#msg').textContent = 'Escape in'; say('Escape in', .5, .9); await sleep(1000);
             const c = $('#count'); c.classList.add('on');
@@ -3544,6 +3676,7 @@ Achieving elite success relies on establishing an uncompromising personal standa
                 if (!on || !ready || !BATTLE || !BATTLE.n.isConnected) return;
                 if (!bag.length) { bag = POW.map((_, i) => i); for (let r = 0; r < 3; r++)for (let i = POW.length - 9; i < POW.length; i++)bag.push(i); bag.sort(() => Math.random() - .5) }
                 const [name, d, f] = POW[bag.pop()]; ready = false; busy = true; btn.classList.remove('rdy'); btn.classList.add('act'); sym.textContent = '!'; lab.textContent = name + '!';
+                const n = window.PWUSES = (window.PWUSES || 0) + 1; window.onPower && window.onPower(n);
                 ban(name); say(name, .5, .9); powerUp(); flash(1);
                 try { f() } catch (e) { console.warn('power failed', e) }
                 gauge(d, 100, 0, '#ff5a2a'); T.push(setTimeout(end, d))
