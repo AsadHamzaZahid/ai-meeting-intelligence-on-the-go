@@ -149,9 +149,7 @@ def run_job(S: dict, job_id: str, source: str, language: str, tmp):
             pass
         r = run_pipeline(source, language, **kwargs)
         # fast jobs wait, so the story can play
-        wait = MIN_JOB_SECONDS - (time.time() - t0)
-        if wait > 0:
-            time.sleep(wait)
+
         S["chains"][job_id] = r.get("rag_chain")
         S["jobs"][job_id] = {"status": "done",
                              "result": to_payload(r, job_id), "t": time.time()}

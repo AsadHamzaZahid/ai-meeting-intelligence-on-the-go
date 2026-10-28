@@ -109,19 +109,18 @@
   ['extract', 'Extraction', 'find supplies'], ['rag', 'RAG Engine', 'reach the safehouse']];
   const css2 = document.createElement('style');
   css2.textContent = `
-  #pl{position:fixed;left:10px;top:140px;z-index:62;display:none;width:178px;background:#0a0f1e99;border:1px solid #ffffff22;border-radius:10px;padding:6px 9px;font:600 11px/1.2 Inter,sans-serif;color:#cfd8ff}
+  #pl{position:fixed!important;left:10px!important;right:auto!important;top:140px;z-index:62;display:none;width:165px;background:#0a0f1e88;border:1px solid #ffffff22;border-radius:10px;padding:5px 8px;font:600 10.5px/1.15 Inter,sans-serif;color:#cfd8ff}
   body.loading #pl{display:block} body.black #pl,body.is-day #pl{display:none}
-  #pl .plt{letter-spacing:.14em;font-size:9px;color:#ffd24a;margin-bottom:2px}
+  #pl .plt{letter-spacing:.14em;font-size:8.5px;color:#ffd24a;margin-bottom:1px}
   #pl ul{margin:0;padding:0}
-  #pl li{list-style:none;display:flex;align-items:center;gap:7px;padding:3px 0;opacity:.5}
-  #pl .dot{width:8px;height:8px;border-radius:50%;background:#3a4258;flex:none}
-  #pl .tg{display:block;font:italic 500 9px Inter,sans-serif;color:#ffe9b8aa}
+  #pl li{list-style:none;display:flex;align-items:center;gap:6px;padding:2px 0;opacity:.5}
+  #pl .dot{width:7px;height:7px;border-radius:50%;background:#3a4258;flex:none}
+  #pl .tg{display:block;font:italic 500 8.5px Inter,sans-serif;color:#ffe9b8aa}
   #pl li.run,#pl li.ok,#pl li.bad{opacity:1}
   #pl li.run .dot{background:#ffd24a;box-shadow:0 0 6px #ffd24a;animation:plf .5s steps(1) infinite}
   #pl li.ok .dot{background:#3ecf8e;box-shadow:0 0 6px #3ecf8e}
   #pl li.bad .dot{background:#ff2a3d;box-shadow:0 0 6px #ff2a3d}
-  @keyframes plf{50%{opacity:.25}}
-  @media(max-width:700px){#pl{top:56px;width:auto;right:8px}#pl .nm{display:none}#pl ul{display:flex;gap:12px}#pl li{padding:0}}`;
+  @keyframes plf{50%{opacity:.25}}`;
   document.head.append(css2);
   const pl = document.createElement('div'); pl.id = 'pl';
   pl.innerHTML = '<div class="plt">PIPELINE</div><ul>' +
