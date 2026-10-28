@@ -12,7 +12,7 @@ Paste a YouTube URL or drop a local file path — get a full transcript, summary
 
 ## 🌐 Live demo
 
-Try it without installing anything: **[Open the live app](YOUR_LIVE_LINK_HERE)**
+Try it without installing anything: **[Open the live app](https://ai-meeting-intelligence-on-the-go-onu9smazb73um55cjz9fbc.streamlit.app/)**
 
 > The app may take a few seconds to wake up if it has been idle.
 
