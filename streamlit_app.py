@@ -1,4 +1,6 @@
 import base64
+import inspect
+import json
 import os
 import re
 import sys
@@ -6,36 +8,38 @@ import tempfile
 import threading
 import time
 import uuid
-import inspect
 from pathlib import Path
 
 import streamlit as st
 import streamlit.components.v1 as components
 
-import json
+# set_page_config must be the first Streamlit command
+st.set_page_config(page_title="AI Meeting Intelligence", page_icon="🎬", layout="wide",
+                   initial_sidebar_state="collapsed")
 
+# Secrets -> environment variables, cleaned of spaces, quotes and hidden newlines.
+# This runs BEFORE main / core are imported, so every library sees the clean keys.
+try:
+    for _k in ("GEMINI_API_KEY", "GOOGLE_API_KEY", "GROQ_API_KEY"):
+        _v = os.environ.get(_k) or (
+            st.secrets[_k] if _k in st.secrets else None)
+        if _v:
+            os.environ[_k] = str(_v).strip().strip('"').strip("'").strip()
+except Exception:
+    pass
 
-# 1. Inject project root cleanly into system paths
+# Inject project root into system paths
 project_root = str(Path(__file__).resolve().parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-# 2. Standard library imports
-
-# 3. Third-party and project imports
-import streamlit as st  # noqa: E402
-import streamlit.components.v1 as components  # noqa: E402
-from main import run_pipeline  # noqa: E402
-from core.rag_engine import ask_question  # noqa: E402
-
+from main import run_pipeline              # noqa: E402
+from core.rag_engine import ask_question   # noqa: E402
 
 BASE = Path(__file__).parent
 MAX_UPLOAD_MB = 60
 
 SAMPLES_DIR = BASE / "samples"
-YT_BLOCK = ("sign in to confirm", "not a bot", "http error 429", "http error 403",
-            "ip address is blocked", "ipblocked", "requestblocked", "po token")
-
 BLOCK_REASONS = {"bot_check", "forbidden", "network", "unknown"}
 MIN_JOB_SECONDS = int(os.getenv("MIN_JOB_SECONDS", "100")
                       )   # set to 0 to disable
@@ -47,20 +51,6 @@ def load_samples() -> dict:
     except Exception:
         return {}
 
-
-st.set_page_config(page_title="AI Meeting Intelligence", page_icon="🎬", layout="wide",
-                   initial_sidebar_state="collapsed")
-
-# Streamlit secrets -> environment variables (so the Gemini key reaches your code)
-try:
-    for _k in ("GEMINI_API_KEY", "GOOGLE_API_KEY", "GROQ_API_KEY"):
-        if _k in st.secrets and not os.environ.get(_k):
-            os.environ[_k] = str(st.secrets[_k])
-except Exception:
-    pass
-
-from main import run_pipeline                 # noqa: E402  your existing pipeline
-from core.rag_engine import ask_question      # noqa: E402  your existing chat chain
 
 # ---- hide Streamlit's own chrome so only the page shows -------------------------------
 st.markdown("""
@@ -103,7 +93,8 @@ def store():
 def safe_error(e: Exception) -> str:
     msg = str(e)
     msg = re.sub(r"(key=)[^&\s'\"]+", r"\1***", msg)
-    for name in ("GEMINI_API_KEY", "GOOGLE_API_KEY"):
+    msg = re.sub(r"gsk_[A-Za-z0-9]+", "***", msg)
+    for name in ("GEMINI_API_KEY", "GOOGLE_API_KEY", "GROQ_API_KEY"):
         secret = os.environ.get(name)
         if secret:
             msg = msg.replace(secret, "***")
@@ -166,7 +157,7 @@ def run_job(S: dict, job_id: str, source: str, language: str, tmp):
                              "result": to_payload(r, job_id), "t": time.time()}
     except Exception as e:
         msg = safe_error(e)
-        print(f"Job {job_id} failed: {msg}")
+        print(f"Job {job_id} failed: {type(e).__name__}: {msg}")
         blocked = source.startswith(
             ("http://", "https://")) and getattr(e, "reason", "") in BLOCK_REASONS
         S["jobs"][job_id] = {"status": "error", "code": "yt_blocked" if blocked else "",
@@ -180,22 +171,15 @@ def run_job(S: dict, job_id: str, source: str, language: str, tmp):
 def handle(a: dict) -> dict:
     S, act = store(), a.get("action")
 
-    # --- 1. Samples Action ---
     if act == "samples":
-        return {
-            "ok": True,
-            "samples": [
-                {"file": f, "title": t}
-                for f, t in load_samples().items()
-                if (SAMPLES_DIR / f).is_file()
-            ]
-        }
+        return {"ok": True,
+                "samples": [{"file": f, "title": t}
+                            for f, t in load_samples().items()
+                            if (SAMPLES_DIR / f).is_file()]}
 
-    # --- 2. Analyse Action ---
     if act == "analyse":
         language, tmp = a.get("language") or "english", None
 
-        # 1. Data Branch
         if a.get("data"):
             raw = base64.b64decode(a["data"].split(",", 1)[-1])
             if len(raw) > MAX_UPLOAD_MB * 1048576:
@@ -205,50 +189,39 @@ def handle(a: dict) -> dict:
                 f.write(raw)
                 tmp = f.name
             source = tmp
-
-        # 2. Sample Branch
         elif a.get("sample"):
             name = a["sample"]
             if name not in load_samples() or not (SAMPLES_DIR / name).is_file():
                 return {"ok": False, "error": "Unknown sample."}
             source = str(SAMPLES_DIR / name)
-
-        # 3. URL Branch
         elif (a.get("url") or "").strip():
             source = a["url"].strip()
-
-        # 4. Error Fallback
         else:
             return {"ok": False, "error": "Provide a url or a file"}
 
-        # --- Processing Logic (Executes ONLY if inside 'analyse' and valid) ---
-        # Clean up old jobs (older than 1 hour)
+        # drop old jobs (older than 1 hour)
         for k in [k for k, v in S["jobs"].items() if time.time() - v.get("t", 0) > 3600]:
             S["jobs"].pop(k, None)
             S["chains"].pop(k, None)
 
-        # Initialize and fire background thread
         if sum(1 for v in S["jobs"].values() if v.get("status") == "running") >= 3:
+            if tmp and os.path.exists(tmp):
+                os.remove(tmp)
             return {"ok": False, "error": "The app is busy right now. Try again in a minute."}
+
         job_id = uuid.uuid4().hex
         S["jobs"][job_id] = {"status": "running", "t": time.time()}
-
-        threading.Thread(
-            target=run_job,
-            args=(S, job_id, source, language, tmp),
-            daemon=True
-        ).start()
-
+        threading.Thread(target=run_job,
+                         args=(S, job_id, source, language, tmp),
+                         daemon=True).start()
         return {"ok": True, "job_id": job_id}
 
-    # --- 3. Poll Action ---
     if act == "poll":
         job = S["jobs"].get(a.get("job_id"))
         if not job:
             return {"ok": True, "status": "missing"}
         return {"ok": True, **{k: v for k, v in job.items() if k != "t"}}
 
-    # --- 4. Chat Action ---
     if act == "chat":
         chain = S["chains"].get(a.get("session_id"))
         if chain is None:
@@ -258,7 +231,6 @@ def handle(a: dict) -> dict:
         except Exception as e:
             return {"ok": False, "error": safe_error(e)}
 
-    # --- 5. Catch-all Fallback ---
     return {"ok": False, "error": "Unknown action"}
 
 
