@@ -36,6 +36,10 @@ SAMPLES_DIR = BASE / "samples"
 YT_BLOCK = ("sign in to confirm", "not a bot", "http error 429", "http error 403",
             "ip address is blocked", "ipblocked", "requestblocked", "po token")
 
+BLOCK_REASONS = {"bot_check", "forbidden", "network", "unknown"}
+MIN_JOB_SECONDS = int(os.getenv("MIN_JOB_SECONDS", "100")
+                      )   # set to 0 to disable
+
 
 def load_samples() -> dict:
     try:
@@ -144,6 +148,7 @@ def make_progress(S, job_id):
 
 
 def run_job(S: dict, job_id: str, source: str, language: str, tmp):
+    t0 = time.time()
     try:
         kwargs = {}
         try:
@@ -152,6 +157,10 @@ def run_job(S: dict, job_id: str, source: str, language: str, tmp):
         except (TypeError, ValueError):
             pass
         r = run_pipeline(source, language, **kwargs)
+        # fast jobs wait, so the story can play
+        wait = MIN_JOB_SECONDS - (time.time() - t0)
+        if wait > 0:
+            time.sleep(wait)
         S["chains"][job_id] = r.get("rag_chain")
         S["jobs"][job_id] = {"status": "done",
                              "result": to_payload(r, job_id), "t": time.time()}
@@ -159,9 +168,10 @@ def run_job(S: dict, job_id: str, source: str, language: str, tmp):
         msg = safe_error(e)
         print(f"Job {job_id} failed: {msg}")
         blocked = source.startswith(
-            ("http://", "https://")) and any(k in msg.lower() for k in YT_BLOCK)
+            ("http://", "https://")) and getattr(e, "reason", "") in BLOCK_REASONS
         S["jobs"][job_id] = {"status": "error", "code": "yt_blocked" if blocked else "",
-                             "error": "Pipeline failed: " + msg, "t": time.time()}
+                             "error": msg if getattr(e, "reason", None) else "Pipeline failed: " + msg,
+                             "t": time.time()}
     finally:
         if tmp and os.path.exists(tmp):
             os.remove(tmp)

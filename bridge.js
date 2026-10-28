@@ -88,8 +88,13 @@
   document.body.append(box);
   $('#smpb').onclick = () => $('#smpl').classList.toggle('on');
   call({ action: 'samples' }).then(r => {
+    $('#smpb').textContent = '🎬 Samples (' + (r.samples || []).length + ')';
     (r.samples || []).forEach(s => {
-      const b = document.createElement('button'); b.type = 'button'; b.textContent = s.title;
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = s.title;
+      // ... rest of your code
+
       b.onclick = () => {
         window.PICKED = s.file; $('#url').value = ''; $('#file').value = ''; $('#fn').textContent = '';
         $('#smpl').classList.remove('on'); $('#form').requestSubmit();
@@ -98,34 +103,30 @@
     });
   }).catch(() => { });
 
-  /* ================= PIPELINE LIGHTS: zombie-escape checkpoints ================= */
-  const STAGES = [['audio', '⚡', 'Power the generator'], ['transcribe', '📻', 'Decode the radio'], ['title', '🔐', 'Crack the keypad'],
-  ['summary', '🪵', 'Barricade the room'], ['extract', '📦', 'Find supplies'], ['rag', '🏠', 'Reach the safehouse']];
+  /* ================= PIPELINE LIGHTS ================= */
+  const STAGES = [['audio', 'Audio Processing', 'power the generator'], ['transcribe', 'Transcription', 'decode the radio'],
+  ['title', 'Title Generation', 'crack the keypad'], ['summary', 'Summarisation', 'barricade the room'],
+  ['extract', 'Extraction', 'find supplies'], ['rag', 'RAG Engine', 'reach the safehouse']];
   const css2 = document.createElement('style');
   css2.textContent = `
-  #pl{position:fixed;right:10px;top:58px;z-index:62;display:none;width:min(230px,60vw);background:#0a0f1ecc;border:1px solid #ffffff30;border-radius:12px;padding:10px 12px;font:600 12px Inter,sans-serif;color:#cfd8ff}
+  #pl{position:fixed;left:10px;top:140px;z-index:62;display:none;width:178px;background:#0a0f1e99;border:1px solid #ffffff22;border-radius:10px;padding:6px 9px;font:600 11px/1.2 Inter,sans-serif;color:#cfd8ff}
   body.loading #pl{display:block} body.black #pl,body.is-day #pl{display:none}
-  #pl .plt{letter-spacing:.14em;font-size:11px;color:#ffd24a}
-  #pl ul{margin:6px 0 0;padding:0}
-  #pl li{list-style:none;display:flex;align-items:center;gap:8px;padding:4px 0;opacity:.5}
-  #pl .dot{width:10px;height:10px;border-radius:50%;background:#3a4258;flex:none}
+  #pl .plt{letter-spacing:.14em;font-size:9px;color:#ffd24a;margin-bottom:2px}
+  #pl ul{margin:0;padding:0}
+  #pl li{list-style:none;display:flex;align-items:center;gap:7px;padding:3px 0;opacity:.5}
+  #pl .dot{width:8px;height:8px;border-radius:50%;background:#3a4258;flex:none}
+  #pl .tg{display:block;font:italic 500 9px Inter,sans-serif;color:#ffe9b8aa}
   #pl li.run,#pl li.ok,#pl li.bad{opacity:1}
-  #pl li.run .dot{background:#ffd24a;box-shadow:0 0 8px #ffd24a;animation:plf .5s steps(1) infinite}
-  #pl li.ok .dot{background:#3ecf8e;box-shadow:0 0 8px #3ecf8e}
-  #pl li.bad .dot{background:#ff2a3d;box-shadow:0 0 8px #ff2a3d}
+  #pl li.run .dot{background:#ffd24a;box-shadow:0 0 6px #ffd24a;animation:plf .5s steps(1) infinite}
+  #pl li.ok .dot{background:#3ecf8e;box-shadow:0 0 6px #3ecf8e}
+  #pl li.bad .dot{background:#ff2a3d;box-shadow:0 0 6px #ff2a3d}
   @keyframes plf{50%{opacity:.25}}
-  #plz{position:relative;height:20px;margin-top:6px;border-bottom:2px dashed #ffffff30}
-  #plzb{position:absolute;bottom:0;left:20%;transition:left 1s linear}
-  #plz .plh{position:absolute;right:0;bottom:0}
-  @media(max-width:700px){#pl{width:auto}#pl .lb{display:none}#pl ul{display:flex;gap:12px}#pl li{padding:0}}`;
+  @media(max-width:700px){#pl{top:56px;width:auto;right:8px}#pl .nm{display:none}#pl ul{display:flex;gap:12px}#pl li{padding:0}}`;
   document.head.append(css2);
   const pl = document.createElement('div'); pl.id = 'pl';
-  pl.innerHTML = '<div class="plt">ESCAPE ROUTE</div><div id="plz"><span id="plzb">🧟</span><span class="plh">🏠</span></div><ul>' +
-    STAGES.map(([k, ic, lb]) => `<li data-k="${k}"><i class="dot"></i><span>${ic}</span><span class="lb">${lb}</span></li>`).join('') + '</ul>';
+  pl.innerHTML = '<div class="plt">PIPELINE</div><ul>' +
+    STAGES.map(([k, n, t]) => `<li data-k="${k}"><i class="dot"></i><span class="nm">${n}<span class="tg">${t}</span></span></li>`).join('') + '</ul>';
   document.body.append(pl);
-  let pz = 20, doneN = 0;
-  const zmove = () => { $('#plzb').style.left = Math.max(2, Math.min(85, pz)) + '%' };
-  setInterval(() => { if (document.body.classList.contains('loading')) { pz += .5; zmove() } }, 1000);
   window.setStage = s => {
     s = s || {};
     const fin = s.status === 'done', done = new Set(fin ? STAGES.map(x => x[0]) : (s.done_stages || []));
@@ -134,13 +135,10 @@
       const k = li.dataset.k;
       li.className = done.has(k) ? 'ok' : s.status === 'error' ? (k === s.stage ? 'bad' : '') : (noInfo || k === s.stage) ? 'run' : '';
     });
-    if (!s.status && !s.stage) { pz = 20; doneN = 0 }
-    if (done.size > doneN) pz -= 12 * (done.size - doneN);
-    doneN = done.size; zmove();
   };
 
   /* ================= THE HERO: appears with the upload box ================= */
-  const BUBBLE_HOLD = 1500;                       // ms each bubble stays after typing (shorten for a faster scene)
+  const BUBBLE_HOLD = 2500;                       // ms each bubble stays after typing (shorten for a faster scene)
   const LINES = ['YouTube blocks cloud servers, so links can\u2019t be processed on this deployed app.',
     'Pick a sample from the box I\u2019m leaving behind, or upload any file from your computer.',
     'Run this code on your own machine and YouTube links work too.'];

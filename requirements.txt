@@ -7,10 +7,9 @@ pydub>=0.25.1
 ffmpeg-python>=0.2.0              # FFmpeg binary comes from packages.txt on the cloud
 
 # ── Speech-to-Text (local Whisper) ────────────────────────────────────────────
-openai-whisper>=20231117
+
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch>=2.2.0
-torchaudio>=2.2.0
 
 # ── Translation (Hindi → English) ─────────────────────────────────────────────
 deep-translator>=1.11.4
