@@ -3,7 +3,12 @@ import time
 import requests
 from pydub import AudioSegment
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
+def _key():
+    """Read the key at call time, so it works even if secrets are loaded after import."""
+    return os.getenv("GROQ_API_KEY")
+
+
 GROQ_STT_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
 GROQ_MODEL = os.getenv("GROQ_STT_MODEL", "whisper-large-v3-turbo")
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")   # local fallback only
@@ -32,7 +37,7 @@ def transcribe_chunk_local(chunk_path: str, language: str) -> str:
 
 
 def _send_to_groq(path: str, language: str) -> str:
-    headers = {"Authorization": f"Bearer {GROQ_API_KEY}"}
+    headers = {"Authorization": f"Bearer {_key()}"}
     for attempt in range(4):
         with open(path, "rb") as f:
             r = requests.post(
@@ -52,7 +57,7 @@ def _send_to_groq(path: str, language: str) -> str:
 
 
 def transcribe_chunk_groq(chunk_path: str, language: str) -> str:
-    # under Groq's upload limit: send whole
+    # under Groq's upload limit: send the whole chunk
     if os.path.getsize(chunk_path) <= 20 * 1024 * 1024:
         return _send_to_groq(chunk_path, language).strip()
     audio = AudioSegment.from_wav(
@@ -70,14 +75,14 @@ def transcribe_chunk_groq(chunk_path: str, language: str) -> str:
 
 
 def transcribe_chunk(chunk_path: str, language: str = "english") -> str:
-    if GROQ_API_KEY:
+    if _key():
         return transcribe_chunk_groq(chunk_path, language)
     return transcribe_chunk_local(chunk_path, language)
 
 
 def transcribe_all(chunks: list, language: str = "english") -> str:
-    print("Using", "Groq API" if GROQ_API_KEY else "local Whisper",
-          "for transcription.")
+    engine = "Groq API" if _key() else "local Whisper (GROQ_API_KEY not found)"
+    print(f"Using {engine} for transcription.")
     out = []
     for i, chunk in enumerate(chunks):
         print(f"Transcribing chunk {i + 1}/{len(chunks)}...")

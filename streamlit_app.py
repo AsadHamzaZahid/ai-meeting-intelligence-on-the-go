@@ -53,7 +53,7 @@ st.set_page_config(page_title="AI Meeting Intelligence", page_icon="🎬", layou
 
 # Streamlit secrets -> environment variables (so the Gemini key reaches your code)
 try:
-    for _k in ("GEMINI_API_KEY", "GOOGLE_API_KEY"):
+    for _k in ("GEMINI_API_KEY", "GOOGLE_API_KEY", "GROQ_API_KEY"):
         if _k in st.secrets and not os.environ.get(_k):
             os.environ[_k] = str(st.secrets[_k])
 except Exception:
