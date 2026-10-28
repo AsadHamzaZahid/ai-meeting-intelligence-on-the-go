@@ -5,8 +5,8 @@ from pydub import AudioSegment
 
 
 def _key():
-    """Read the key at call time, so it works even if secrets are loaded after import."""
-    return os.getenv("GROQ_API_KEY")
+    k = os.getenv("GROQ_API_KEY")
+    return k.strip().strip('"').strip("'") if k else None
 
 
 GROQ_STT_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
